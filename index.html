@@ -1212,27 +1212,58 @@ let adminCurrentTab = 'users';
 // =========================================================
 function initApp() {
   const { auth, onAuthStateChanged } = window._fb;
-  onAuthStateChanged(auth, async (user) => {
-    document.getElementById('loading').style.display = 'none';
-    if (user) {
-      currentUser = user;
-      await loadUserData();
-      showScreen('main-screen');
-      showPage('inbox');
-      listenConversations();
-      listenContacts();
-    } else {
-      currentUser = null;
-      currentUserData = null;
-      showScreen('auth-screen');
-    }
-  });
-}
+  onAuthStateChanged(auth, (user) => {
+  if (user) {
+    currentUser = user;
+    
+    // Real-time status update listen karne ke liye (onSnapshot)
+    onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        currentUserData = docSnap.data();
+        
+        // 1. BAN RESTRICTION: Admin ne ban kiya toh turant alert aur logout
+        if (currentUserData.status === 'banned') {
+          alert("Your account has been banned by the administrator.");
+          signOut(auth).then(() => {
+            currentUser = null;
+            currentUserData = null;
+            showPage('auth-page');
+          });
+          return;
+        }
+        
+        // 2. MUTE RESTRICTION: Chat input text-box freeze aur active karne ke liye
+        const msgInput = document.getElementById('chat-message-input'); 
+        const sendBtn = document.getElementById('chat-send-btn'); 
+        
+        if (currentUserData.status === 'muted') {
+          if (msgInput) {
+            msgInput.placeholder = "You have been muted by the admin.";
+            msgInput.disabled = true;
+          }
+          if (sendBtn) sendBtn.disabled = true;
+        } else {
+          if (msgInput && msgInput.disabled) {
+            msgInput.placeholder = "Type a message...";
+            msgInput.disabled = false;
+          }
+          if (sendBtn) sendBtn.disabled = false;
+        }
 
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
+        setupAppUI();
+      } else {
+        showPage('auth-page');
+      }
+    }, (error) => {
+      console.error("Status listener error:", error);
+    });
+
+  } else {
+    currentUser = null;
+    currentUserData = null;
+    showPage('auth-page');
+  }
+});
 
 // =========================================================
 // AUTH
